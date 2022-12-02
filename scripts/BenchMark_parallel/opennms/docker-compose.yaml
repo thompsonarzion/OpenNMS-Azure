@@ -1,0 +1,73 @@
+---
+version: '3'
+
+volumes:
+  data-postgres: {}
+  data-opennms: {}
+  data-opennms-cfg: {}
+
+services:
+  database:
+    image: ${DOCKER_REGISTRY:-docker.io}/postgres:${POSTGRES_VERSION:-13}-alpine
+    container_name: database
+    hostname: database
+    environment:
+      TZ: ${TIMEZONE:-America/New_York}
+      POSTGRES_HOST: database
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - data-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 30s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: ${docker_opennms_maxCpu}
+          memory: ${docker_postgress_maxMemory}
+        reservations:
+          cpus: ${docker_opennms_maxCpu}
+          memory: ${docker_postgress_maxMemory}
+
+  horizon:
+    image: opennms/horizon:31.0.1
+    container_name: horizon
+    hostname: horizon
+    sysctls:
+      net.ipv4.ping_group_range: "0 429496729"
+    depends_on:
+      - database
+    environment:
+      TZ: ${TIMEZONE:-America/New_York}
+      JAVA_OPTS: -Xms1024m -Xmx8048m -XX:MaxMetaspaceSize=1024m
+    volumes:
+      - data-opennms:/opennms-data
+      - data-opennms-cfg:/opt/opennms/etc
+      - ./container-fs/opt/opennms/deploy:/opt/opennms/deploy
+      - ./container-fs/opt/opennms-overlay:/opt/opennms-overlay
+      - ./container-fs/etc/conf.d/confd.toml:/etc/confd/confd.toml
+    command: ["-s"]
+    ports:
+      - "8101:8101/tcp"
+      - "8980:8980/tcp"
+      - "10162:1162/udp"
+      - "10514:10514/udp"
+      - "162:162/udp"
+      - "161:161/udp"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "-I", "http://localhost:8980/opennms/login.jsp" ]
+      interval: 1m
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: ${docker_opennms_maxCpu}
+          memory: ${docker_opennms_maxMemory}
+        reservations:
+          cpus: ${docker_opennms_maxCpu}
+          memory: ${docker_opennms_maxMemory}
